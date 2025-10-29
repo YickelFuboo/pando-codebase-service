@@ -321,7 +321,6 @@ class CodeWikiContentGenService:
                 catalog_id=wiki_catalog.id,
                 title=wiki_catalog.name,
                 description="",
-                content=result_str,
                 size=0,
                 source_file_items=[],
                 meta_data={},
