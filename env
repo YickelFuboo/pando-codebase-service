@@ -130,6 +130,46 @@ OS_PASSWORD=admin
 # =============================================================================
 # 业务配置
 # =============================================================================
-# GitHub配置
+
+# 代码分析配置
+# 是否启用代码依赖分析 - 分析代码文件之间的依赖关系
 ENABLE_CODE_DEPENDENCY_ANALYSIS=false
+
+# 是否启用代码压缩 - 压缩代码内容以减少存储空间
 ENABLE_CODE_COMPRESSION=true
+
+# 是否启用智能过滤 - 智能过滤无关的代码文件
+ENABLE_SMART_FILTER=true
+
+# 目录格式 - 生成文档目录的格式 (compact/detailed)
+CATALOGUE_FORMAT=compact
+
+# 增量更新配置
+# 是否启用增量更新 - 只更新发生变化的文件
+ENABLE_INCREMENTAL_UPDATE=true
+
+# 仓库功能配置
+# 是否启用仓库功能提示任务 - 生成仓库功能相关的提示
+ENABLE_WAREHOUSE_FUNCTION_PROMPT_TASK=true
+
+# 是否启用仓库描述任务 - 生成仓库描述信息
+ENABLE_WAREHOUSE_DESCRIPTION_TASK=true
+
+# 是否启用文件提交 - 处理文件级别的提交记录
+ENABLE_FILE_COMMIT=true
+
+# 是否启用仓库提交 - 处理仓库级别的提交记录
+ENABLE_WAREHOUSE_COMMIT=true
+
+# 质量优化配置
+# 是否精炼并提高质量 - 对AI生成的内容进行质量优化
+REFINE_AND_ENHANCE_QUALITY=true
+
+# 文件过滤配置
+# 排除的文件列表 - JSON格式的文件名列表，如：["*.log", "*.tmp"]
+EXCLUDED_FILES=[]
+
+# 排除的文件夹列表 - JSON格式的文件夹名列表，如：["node_modules", ".git"]
+EXCLUDED_FOLDERS=[]
+
+

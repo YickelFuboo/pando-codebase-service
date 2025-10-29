@@ -10,6 +10,7 @@ _meta = get_project_meta()
 APP_NAME = _meta["name"]
 APP_VERSION = _meta["version"]
 APP_DESCRIPTION = _meta["description"]
+
 PROJECT_BASE_DIR = get_project_base_directory()
 
 class Settings(BaseSettings):
@@ -122,9 +123,28 @@ class Settings(BaseSettings):
     # =============================================================================
     # 业务配置
     # =============================================================================
+    # 代码分析配置
     enable_code_dependency_analysis: bool = Field(default=False, description="是否启用代码依赖分析", env="ENABLE_CODE_DEPENDENCY_ANALYSIS")
     enable_code_compression: bool = Field(default=True, description="是否启用代码压缩", env="ENABLE_CODE_COMPRESSION")
-
+    enable_smart_filter: bool = Field(default=True, description="是否启用智能过滤", env="ENABLE_SMART_FILTER")
+    catalogue_format: str = Field(default="compact", description="目录格式", env="CATALOGUE_FORMAT")
+    
+    # 增量更新配置
+    enable_incremental_update: bool = Field(default=True, description="是否启用增量更新", env="ENABLE_INCREMENTAL_UPDATE")
+    
+    # 仓库功能配置
+    enable_warehouse_function_prompt_task: bool = Field(default=True, description="是否启用仓库功能提示任务", env="ENABLE_WAREHOUSE_FUNCTION_PROMPT_TASK")
+    enable_warehouse_description_task: bool = Field(default=True, description="是否启用仓库描述任务", env="ENABLE_WAREHOUSE_DESCRIPTION_TASK")
+    enable_file_commit: bool = Field(default=True, description="是否启用文件提交", env="ENABLE_FILE_COMMIT")
+    enable_warehouse_commit: bool = Field(default=True, description="是否启用仓库提交", env="ENABLE_WAREHOUSE_COMMIT")
+    
+    # 质量优化配置
+    refine_and_enhance_quality: bool = Field(default=True, description="是否精炼并提高质量", env="REFINE_AND_ENHANCE_QUALITY")
+    
+    # 文件过滤配置
+    excluded_files: str = Field(default="[]", description="排除的文件列表(JSON字符串)", env="EXCLUDED_FILES")
+    excluded_folders: str = Field(default="[]", description="排除的文件夹列表(JSON字符串)", env="EXCLUDED_FOLDERS")
+    
     class Config:
         env_file = "env"
         env_file_encoding = "utf-8"
@@ -145,6 +165,24 @@ class Settings(BaseSettings):
         if self.redis_password:
             return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
         return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
+    
+    @property
+    def excluded_files_list(self) -> list:
+        """获取排除的文件列表"""
+        import json
+        try:
+            return json.loads(self.excluded_files) if self.excluded_files else []
+        except json.JSONDecodeError:
+            return []
+    
+    @property
+    def excluded_folders_list(self) -> list:
+        """获取排除的文件夹列表"""
+        import json
+        try:
+            return json.loads(self.excluded_folders) if self.excluded_folders else []
+        except json.JSONDecodeError:
+            return []
 
 
 # 全局配置实例

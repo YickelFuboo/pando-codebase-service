@@ -8,7 +8,7 @@ from semantic_kernel.connectors.ai.open_ai import OpenAIChatCompletion, AzureCha
 from openai import AsyncOpenAI
 from semantic_kernel.functions import kernel_function
 from app.config.settings import settings, APP_VERSION
-from app.infrastructure.llm.llms.chat_models.factory import llm_factory
+from app.infrastructure.llms.chat_models.factory import llm_factory
 from .functions.file_function import FileFunction
 
 

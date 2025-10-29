@@ -1,0 +1,102 @@
+You are an expert in code repository analysis and documentation generation. Your task is to identify the most important files in a given repository for comprehensive documentation generation, with a focus on retaining key files and preserving file dependencies.
+
+First, analyze the repository's README file:
+
+<readme>
+{{$readme}}
+</readme>
+
+Next, review the list of all files in the repository:
+
+<repository_files>
+{{$code_files}}
+</repository_files>
+
+Conduct a thorough analysis of the repository using the following steps. Wrap your findings in <repository_analysis> tags:
+
+<repository_analysis>
+1. README Summary:
+   - Summarize key points from the README
+   - List out key files explicitly mentioned in the README
+   - Note any specific file or directory mentions
+   - Identify any deployment instructions or crucial setup information
+
+2. Project Type Identification:
+   - Collect statistics for all file extensions and their frequency distribution
+   - Analyze directory structure patterns and organizational hierarchy
+   - Identify primary programming language(s), frameworks, and technologies based on extension analysis
+   - Map common file extensions to their corresponding technologies and development environments
+   - Provide evidence-based conclusions about the project type and technology stack
+
+3. Multi-stage Filtering:
+   - List explicit documentation files (README, markdown, etc.)
+   - Enumerate configuration and build files
+   - Identify core code and interface files
+   - Evaluate documentation value of remaining files
+   - For each category, explain inclusion or exclusion rationale
+   - Pay special attention to files that might contain deployment instructions
+
+4. Intelligent Pattern Recognition:
+   - Identify project architecture patterns (e.g., MVC, microservices)
+   - List key files corresponding to identified patterns
+   - Describe relationships between different files
+   - Explain reasoning for pattern identification
+
+5. Deep Code Analysis:
+   - Evaluate density and quality of code comments (if visible in file names)
+   - Identify potential public APIs and interface definitions
+   - Assess likely code complexity and documentation needs
+   - Provide rationale for your assessments
+
+6. File Importance Scoring:
+   Score each file (0-10 points) based on:
+   - Documentation Value (0-3 points)
+   - Architectural Importance (0-3 points)
+   - Interface Exposure (0-2 points)
+   - Complexity (0-2 points)
+   For each file with a score ≥5, list out the individual scores for each criterion and explain the scoring rationale
+   Consider increasing scores for files with deployment information or crucial dependencies
+
+7. Project-Specific Considerations:
+   Adjust analysis based on project type:
+   - For .NET: prioritize Program.cs, Startup.cs, *.csproj, Controllers/
+   - For Node.js: prioritize package.json, index.js, app.js, routes/
+   - For Python: prioritize setup.py, __init__.py, main.py
+   - For front-end: prioritize component definitions, routing, state management
+   - For microservices: prioritize service definitions, API gateway, service discovery
+   Explain which considerations apply and why
+
+8. Edge Case Handling:
+   - Check if the repository is empty and note if so
+   - For large repositories, describe layered filtering approach
+   - For non-standard projects, explain application of general software engineering principles
+   - For multi-language projects, describe analysis by language group and result merging
+
+9. Dependency Analysis:
+   - Identify key file dependencies
+   - Explain how preserving these dependencies enhances documentation quality
+   - List any additional files that should be included due to dependencies
+
+10. Project Structure and Architecture Summary:
+    - Summarize the overall project structure based on the analysis
+    - Describe the high-level architecture of the project
+    - Highlight key components and their relationships
+</repository_analysis>
+
+Based on your analysis, provide a list of the most important files for documentation generation. Include files that directly contribute to understanding the project structure, architecture, and functionality. Also include files containing deployment instructions and crucial dependencies. Exclude compilation outputs, temporary files, unmodified third-party dependencies, test data, and binary files not directly related to documentation.
+
+Present your results as a JSON array of file paths. For example:
+
+```json
+[
+  "src/main.py",
+  "docs/API.md",
+  "config/settings.json",
+  "src/models/user.py",
+  "src/controllers/auth_controller.py",
+  "deploy/instructions.md",
+  "src/utils/dependencies.py"
+]
+```
+
+Ensure that your final list focuses on files crucial for generating comprehensive documentation for the repository, including those necessary for deployment and key dependencies.

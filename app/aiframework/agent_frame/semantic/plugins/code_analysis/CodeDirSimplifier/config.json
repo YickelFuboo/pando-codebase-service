@@ -1,0 +1,71 @@
+{
+  "schema": 1,
+  "type": "completion",
+  "description": "简化代码目录",
+  "execution_settings": {
+    "default": {
+      "max_tokens": 8192,
+      "temperature": 0.5
+    },
+    "DeepSeek-V3": {
+      "max_tokens": 16384,
+      "temperature": 0.5
+    },
+    "gpt-4.1-mini": {
+      "max_tokens": 16384,
+      "temperature": 0.5
+    },
+    "gpt-4.1": {
+      "max_tokens": 16384,
+      "temperature": 0.5
+    },
+    "gpt-4o": {
+      "max_tokens": 16384,
+      "temperature": 0.5
+    },
+    "o4-mini": {
+      "max_tokens": 16384 ,
+      "temperature": 0.5
+    },
+    "o3-mini": {
+      "max_tokens": 16384 ,
+      "temperature": 0.5
+    },
+    "deepseek-chat": {
+      "max_tokens": 8192 ,
+      "temperature": 0.5
+    },
+    "gemini-2.5-pro-preview-05-06": {
+      "max_tokens": 16384 ,
+      "temperature": 0.5
+    },
+    "Qwen/Qwen3-235B-A22B": {
+      "max_tokens": 16384 ,
+      "temperature": 0.5
+    },
+    "grok-3": {
+      "max_tokens": 16384 ,
+      "temperature": 0.5
+    },
+    "qwen3-235b-a22b": {
+      "max_tokens": 16384 ,
+      "temperature": 0.5
+    },
+    "qwen2.5-coder-3b-instruct": {
+      "max_tokens": 32768 ,
+      "temperature": 0.5
+    }
+  },
+  "input_variables": [
+    {
+      "name": "code_files",
+      "description": "代码文件列表",
+      "required": true
+    },
+    {
+      "name": "readme",
+      "description": "当前仓库文档",
+      "required": true
+    }
+  ]
+}
