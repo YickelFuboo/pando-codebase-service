@@ -18,7 +18,7 @@ from app.infrastructure.storage import STORAGE_CONN
 from app.infrastructure.vector_store import VECTOR_STORE_CONN
 from app.infrastructure.redis import REDIS_CONN
 from app.infrastructure.auth.jwt_middleware import jwt_middleware
-from app.api.v1 import code_wiki, repository
+from app.api.v1 import git_repo, git_auth, code_wiki
 
 
 # 创建FastAPI应用
@@ -42,8 +42,9 @@ app = FastAPI(
 setup_logging()
 
 # 注册所有路由器
+app.include_router(git_auth.router, prefix="/api/v1", tags=["认证信息管理"])
+app.include_router(git_repo.router, prefix="/api/v1", tags=["仓库管理"])
 app.include_router(code_wiki.router, prefix="/api/v1", tags=["代码Wiki管理"])
-app.include_router(repository.router, prefix="/api/v1", tags=["仓库管理"])
 
 # 配置CORS中间件 - 直接使用FastAPI内置的CORSMiddleware
 app.add_middleware(
