@@ -4,8 +4,8 @@ import logging
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 from semantic_kernel.functions import kernel_function
-from app.services.local_repo_service import LocalRepoService
-from app.services.file_tree_service import FileTreeService
+from app.services.common.local_repo_service import LocalRepoService
+from app.services.common.file_tree_service import FileTreeService
 from app.services.ai_kernel.functions.code_compress.code_file_detector import CodeFileDetector
 from app.services.ai_kernel.functions.code_compress.code_compression import CodeCompressionService
 from app.config.settings import settings  

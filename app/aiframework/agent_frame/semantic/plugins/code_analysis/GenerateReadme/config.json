@@ -60,7 +60,8 @@
     {
       "name": "catalogue",
       "description": "仓库目录结构",
-      "required": true
+      "required": true,
+      "allow_dangerously_set_content": true
     },
     {
       "name": "branch",

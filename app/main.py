@@ -7,7 +7,6 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 from app.logger import set_log_level, setup_logging
 from app.config.settings import settings, APP_NAME, APP_VERSION, APP_DESCRIPTION
@@ -145,24 +144,6 @@ async def root():
         "health": "/health",
         "api_base": "/api/v1"
     }
-
-# 自定义Swagger UI路由，使用备用CDN避免网络问题
-@app.get("/docs", include_in_schema=False)
-async def custom_swagger_ui_html():
-    """自定义Swagger UI，使用备用CDN资源"""
-    return get_swagger_ui_html(
-        openapi_url="/openapi.json",
-        title=f"{APP_NAME} - API文档",
-        swagger_js_url="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js",
-        swagger_css_url="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css",
-        swagger_ui_parameters={
-            "deepLinking": True,
-            "displayRequestDuration": True,
-            "filter": True,
-            "showExtensions": True,
-            "showCommonExtensions": True,
-        }
-    )
 
 # 健康检查
 @app.get("/health")

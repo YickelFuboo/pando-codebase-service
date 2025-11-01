@@ -11,10 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update, delete, insert
 from semantic_kernel.functions import KernelArguments
 from semantic_kernel.connectors.ai import PromptExecutionSettings, FunctionChoiceBehavior
-from app.aiframework.prompts.prompt_template_load import get_prompt_template
+from semantic_kernel.contents.chat_history import ChatHistory
 from app.models.code_wiki import ClassifyType, RepoWikiDocument, RepoWikiOverview, RepoWikiCommitRecord, ProcessingStatus
-from app.services.ai_kernel.kernel_factory import KernelFactory
-from app.aiframework.agent_frame.semantic.sk_service import SemanticKernelService
+from app.aiframework.prompts.prompt_template_load import get_prompt_template
+from app.aiframework.agent_frame.semantic.kernel_factory import KernelFactory
 from app.config.settings import settings
 from app.services.ai_kernel.functions.file_function import FileFunction
 from app.services.common.local_repo_service import LocalRepoService
@@ -131,113 +131,52 @@ class CodeWikiGenService:
                 # 2.1 获取目录结构（紧凑格式）
                 try:
                     catalogue = await LocalRepoService.get_catalogue(self.local_path)
+                    # 确保传入SK的是字符串
+                    if not isinstance(catalogue, str):
+                        try:
+                            catalogue = json.dumps(catalogue, ensure_ascii=False)
+                        except Exception:
+                            catalogue = str(catalogue)
                 except Exception as e:
                     logging.warning(f"获取目录结构失败，将使用空目录结构。错误: {e}")
                     catalogue = ""
 
-                # 2.2 创建 AI 内核（加载 CodeAnalysis 语义插件 + FileFunction 原生插件）
-                try:
-                    kernel_factory = KernelFactory()
-                    # 加载语义插件以便可用 CodeAnalysis/GenerateReadme
-                    kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=True)
-                except Exception as e:
-                    logging.error(f"创建AI内核失败，将回退到基础README。错误: {e}")
-                    kernel = None
+                # 2.2 创建 AI 内核（FileFunction 原生插件）
+                kernel = await KernelFactory.get_kernel()
+                kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
                 # 2.3 调用生成 README 的语义插件
-                generated = None
+                readme = None
                 if kernel is not None:
-                    try:
-                        generate_fn = kernel.get_plugin("code_analysis").get("GenerateReadme")
-                        if generate_fn is not None:                            
-                            logging.info(f"调用GenerateReadme参数: catalogue长度={len(catalogue)}, git_repository={self.git_url}, branch={self.branch}")
-                            
-                            arguments_dict = {
-                                "catalogue": catalogue,
-                                "git_repository": self.git_url,
-                                "branch": self.branch,
-                            }
-                            
-                            result = await kernel.invoke(
-                                function=generate_fn,
-                                arguments=KernelArguments(
-                                    settings=PromptExecutionSettings(
-                                        function_choice_behavior=FunctionChoiceBehavior.Auto()
-                                    ),
-                                    **arguments_dict
-                                )
+                    prompt = get_prompt_template(
+                        "app/services/ai_kernel/plugins/code_analysis/GenerateReadme", 
+                        "generatereadme",
+                        {
+                            "catalogue": catalogue,
+                            "git_repository": self.git_url,
+                            "branch": self.branch,
+                        }
+                    )
+                        
+                    result = await kernel.invoke_prompt(
+                        prompt=prompt,
+                        arguments=KernelArguments(
+                            settings=PromptExecutionSettings(
+                                function_choice_behavior=FunctionChoiceBehavior.Auto()
                             )
-                            generated = str(result) if result else None
-                        else:
-                            logging.warning("未发现语义插件 CodeAnalysis/GenerateReadme，跳过AI生成。")
-                            generated = None
-                    except Exception as e:
-                        logging.error(f"调用GenerateReadme插件失败，将回退到基础README。错误: {e}")
-
-                # 2.4 解析 AI 输出
-                if generated:
-                    match = re.search(r"<readme>(.*?)</readme>", generated, re.DOTALL | re.IGNORECASE)
-                    readme = match.group(1) if match else generated
+                        )
+                    )
+                    readme = str(result) if result else None
+                else:
+                    logging.error(f"创建AI内核失败，将回退到基础README。错误: {e}")
+                    raise
 
             # 更新README内容
-            await CodeWikiDocumentService.update_wiki_document_fields(
-                self.session, 
-                self.document_id, 
-                readme_content=readme
-            )
-
-            return readme
-        except Exception as e:
-            logging.error(f"生成README失败: {e}")
-            return ""
-    
-    async def generate_readme_new(self) -> str:
-        """步骤1: 生成README文档
-        1) 优先读取本地 README（多种扩展名）
-        2) 若不存在，则获取目录结构并尝试通过语义插件 CodeAnalysis/GenerateReadme 生成
-        3) 解析 <readme> 标签内容；若失败则直接使用原始文本
-        4) 返回生成/读取的 README 文本（本项目模型暂无 readme 字段，暂不落库）
-        """
-        try:
-            # 1. 优先读取现有 README
-            readme: str = await LocalRepoService.get_readme_file(self.local_path)
-
-            # 2. 若无本地 README，则使用AI生成
-            if not readme:
-                # 2.1 获取目录结构（紧凑格式）
-                try:
-                    catalogue = await LocalRepoService.get_catalogue(self.local_path)
-                except Exception as e:
-                    logging.warning(f"获取目录结构失败，将使用空目录结构。错误: {e}")
-                    catalogue = ""
-
-                # 2.2 创建 AI 内核（加载 CodeAnalysis 语义插件 + FileFunction 原生插件）
-                generated = None
-                try:
-                    kernel_service = SemanticKernelService()
-                    await kernel_service.add_semantic_plugins(parent_path="app/services/ai_kernel/plugins", plugins_name="code_analysis")
-                    await kernel_service.add_native_function(FileFunction(self.local_path), function_name="FileFunction")
-
-                    generated = await kernel_service.invoke_by_plugin(
-                        plugins_name="code_analysis", 
-                        plugin_function_name="GenerateReadme", 
-                        catalogue=catalogue or "", 
-                        git_repository=self.git_url, 
-                        branch=self.branch)
-                except Exception as e:
-                    logging.error(f"生成README失败，错误: {e}")
-
-                # 2.4 解析 AI 输出
-                if generated:
-                    match = re.search(r"<readme>(.*?)</readme>", generated, re.DOTALL | re.IGNORECASE)
-                    readme = match.group(1) if match else generated
-
-            # 更新README内容
-            await CodeWikiDocumentService.update_wiki_document_fields(
-                self.session, 
-                self.document_id, 
-                readme_content=readme
-            )
+            #await CodeWikiDocumentService.update_wiki_document_fields(
+            #    self.session, 
+            #    self.document_id, 
+            #    readme_content=readme
+            #)
 
             return readme
         except Exception as e:

@@ -30,8 +30,8 @@ class RepoWikiDocument(Base, TimestampMixin):
     
     id = Column(String, primary_key=True, index=True, comment="ID")
     
-    # 代码仓信息 - 与RepoRecord建立外键关系
-    repo_id = Column(String, ForeignKey("repo_records.id"), nullable=False, index=True, comment="代码仓对象库ID")    
+    # 代码仓信息 - 与GitRepository建立外键关系
+    repo_id = Column(String, ForeignKey("git_repositories.id"), nullable=False, index=True, comment="代码仓对象库ID")    
     
     # wiki信息
     classify = Column(String, nullable=True, comment="分类") 
@@ -48,9 +48,11 @@ class RepoWikiDocument(Base, TimestampMixin):
     is_embedded = Column(Boolean, default=False, comment="是否嵌入")
 
     # 关系
+    repository = relationship("GitRepository", back_populates="wiki_documents")
     overview = relationship("RepoWikiOverview", back_populates="document", uselist=False, cascade="all, delete-orphan")
     catalogs = relationship("RepoWikiCatalog", back_populates="document", cascade="all, delete-orphan")
     commit_records = relationship("RepoWikiCommitRecord", back_populates="document", cascade="all, delete-orphan")
+    mini_maps = relationship("RepoWikiMiniMap", back_populates="document", cascade="all, delete-orphan")
 
     def to_dict(self, include_children=False):
         result = {

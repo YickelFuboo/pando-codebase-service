@@ -47,7 +47,7 @@ class KernelFactory:
             await self._configure_ai_service_with_model(kernel, model_provider, model_name, base_url, api_key)
             
             # 配置代码分析插件
-            if is_code_analysis:
+            if False and is_code_analysis:
                 # 从目录加载语义插件（config.json + skprompt.txt）
                 plugins_path = os.path.join(os.path.dirname(__file__), "plugins")
                 if os.path.exists(plugins_path):
@@ -55,7 +55,7 @@ class KernelFactory:
                         # 从目录加载插件 - 使用KernelPlugin.from_directory
                         from semantic_kernel.functions.kernel_plugin import KernelPlugin
                         plugin = KernelPlugin.from_directory( "code_analysis", plugins_path)
-                        kernel.add_plugin(plugin)
+                        kernel.add_plugin(plugin)                      
                         logging.info(f"成功加载语义插件: {plugins_path}")
                     except Exception as e:
                         logging.error(f"加载语义插件失败: {e}")
