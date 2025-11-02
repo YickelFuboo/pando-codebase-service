@@ -153,6 +153,35 @@ class CodeWikiDocumentService:
             raise
 
     @staticmethod
+    async def delete_wiki_document_by_repo_id(db: AsyncSession, repo_id: str) -> bool:
+        """
+        根据仓库ID删除CodeWikiDocument记录
+        
+        Args:
+            db: 数据库会话
+            repo_id: 仓库ID
+            
+        Returns:
+            bool: 删除是否成功
+        """
+        try:
+            result = await db.execute(
+                delete(RepoWikiDocument).where(RepoWikiDocument.repo_id == repo_id)
+            )
+            
+            if result.rowcount == 0:
+                return False
+            
+            await db.commit()
+            logging.info(f"根据仓库ID删除CodeWikiDocument记录成功: {repo_id}")
+            return True
+            
+        except Exception as e:
+            await db.rollback()
+            logging.error(f"根据仓库ID删除CodeWikiDocument记录失败: {e}")
+            raise
+
+    @staticmethod
     async def update_wiki_document_fields(db: AsyncSession, doc_id: str, **kwargs) -> bool:
         """
         更新CodeWikiDocument的指定字段

@@ -30,8 +30,30 @@ class FileFunction:
         Args:
             git_local_path: Git仓库的本地路径
         """
-        self.git_local_path = git_local_path
+        self.git_local_path = os.path.normpath(git_local_path)
         self._code_compression_service = CodeCompressionService()  # 代码压缩服务
+    
+    def _normalize_file_path(self, file_path: str) -> tuple[str, str]:
+        """
+        规范化文件路径
+        
+        Args:
+            file_path: 原始文件路径
+            
+        Returns:
+            (normalized_path, full_path): 规范化后的相对路径和完整路径
+        """
+        # 规范化路径：移除开头的 / 和 ./
+        normalized_path = file_path.lstrip('/').lstrip('./').replace('\\', '/')
+        # 构建完整路径并规范化（处理 .. 和 . 等相对路径）
+        full_path = os.path.normpath(os.path.join(self.git_local_path, normalized_path))
+        
+        # 安全检查：确保路径在 git_local_path 内（防止路径遍历攻击）
+        git_local_path_normalized = os.path.normpath(self.git_local_path)
+        if not full_path.startswith(git_local_path_normalized):
+            raise ValueError(f"Access denied: Path {file_path} is outside the repository root")
+        
+        return normalized_path, full_path
     
     def get_tree(self) -> str:
         """
@@ -90,10 +112,22 @@ class FileFunction:
             
             # 步骤4：批量处理文件信息
             for file_path in file_paths:
-                full_path = os.path.join(self.git_local_path, file_path.lstrip('/'))
+                try:
+                    _, full_path = self._normalize_file_path(file_path)
+                except ValueError as e:
+                    result_dict[file_path] = str(e)
+                    continue
                 
                 if not os.path.exists(full_path):
                     result_dict[file_path] = "File not found"
+                    continue
+                
+                # 检查是否为文件
+                if not os.path.isfile(full_path):
+                    if os.path.isdir(full_path):
+                        result_dict[file_path] = f"Error: {file_path} is a directory, not a file"
+                    else:
+                        result_dict[file_path] = f"Error: {file_path} is not a valid file path"
                     continue
                 
                 try:
@@ -151,9 +185,16 @@ class FileFunction:
             result_dict = {}
             
             for file_path in file_paths:
-                full_path = os.path.join(self.git_local_path, file_path.lstrip('/'))
+                try:
+                    _, full_path = self._normalize_file_path(file_path)
+                except ValueError:
+                    continue
                 
                 if not os.path.exists(full_path):
+                    continue
+                
+                # 检查是否为文件
+                if not os.path.isfile(full_path):
                     continue
                 
                 try:
@@ -196,10 +237,20 @@ class FileFunction:
             # 记录到上下文
             DocumentContextManager.add_file(file_path)
 
-            full_path = os.path.join(self.git_local_path, file_path.lstrip('/'))
+            try:
+                _, full_path = self._normalize_file_path(file_path)
+            except ValueError as e:
+                return str(e)
             
             if not os.path.exists(full_path):
                 return f"File not found: {file_path}"
+            
+            # 检查是否为文件
+            if not os.path.isfile(full_path):
+                if os.path.isdir(full_path):
+                    return f"Error: {file_path} is a directory, not a file. Please specify a file path."
+                else:
+                    return f"Error: {file_path} is not a valid file path."
             
             stat = os.stat(full_path)
             
@@ -263,10 +314,20 @@ class FileFunction:
             带行号的文件内容字符串
         """
         try:
-            full_path = os.path.join(self.git_local_path, file_path.lstrip('/'))
+            try:
+                _, full_path = self._normalize_file_path(file_path)
+            except ValueError as e:
+                return str(e)
             
             if not os.path.exists(full_path):
                 return f"File not found: {file_path}"
+            
+            # 检查是否为文件
+            if not os.path.isfile(full_path):
+                if os.path.isdir(full_path):
+                    return f"Error: {file_path} is a directory, not a file. Please specify a file path."
+                else:
+                    return f"Error: {file_path} is not a valid file path."
             
             # 特殊参数处理
             if offset < 0 and limit < 0:

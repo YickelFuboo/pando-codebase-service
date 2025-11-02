@@ -412,3 +412,5 @@ Generate your documentation using this exact structure, wrapped in <blog> tags:
 - Focus on practical implementation guidance
 
 IMPORTANT: Generate complete, comprehensive documentation suitable for library evaluation, adoption, and integration decisions. Do not truncate or summarize - provide thorough analysis that serves as a definitive resource for the library.
+
+请使用中文

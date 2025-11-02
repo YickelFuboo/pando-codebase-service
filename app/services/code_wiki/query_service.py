@@ -416,3 +416,64 @@ class CodeWikiQueryService:
             await db.rollback()
             logging.error(f"更新文档内容失败: {e}")
             raise
+
+    @staticmethod
+    async def get_overview_by_document_id(db: AsyncSession, document_id: str) -> Optional[RepoWikiOverview]:
+        """根据文档ID获取概述"""
+        try:
+            overview_result = await db.execute(
+                select(RepoWikiOverview).where(RepoWikiOverview.document_id == document_id)
+            )
+            return overview_result.scalar_one_or_none()
+        except Exception as e:
+            logging.error(f"获取概述失败: {e}")
+            raise
+
+    @staticmethod
+    async def update_overview(db: AsyncSession, document_id: str, title: Optional[str] = None, content: Optional[str] = None) -> bool:
+        """更新概述"""
+        try:
+            overview_result = await db.execute(
+                select(RepoWikiOverview).where(RepoWikiOverview.document_id == document_id)
+            )
+            overview = overview_result.scalar_one_or_none()
+            
+            if not overview:
+                return False
+            
+            if title is not None:
+                overview.title = title
+            if content is not None:
+                overview.content = content
+            
+            await db.commit()
+            return True
+            
+        except Exception as e:
+            await db.rollback()
+            logging.error(f"更新概述失败: {e}")
+            raise
+
+    @staticmethod
+    async def get_minimap_by_document_id(db: AsyncSession, document_id: str) -> Optional[RepoWikiMiniMap]:
+        """根据文档ID获取迷你地图"""
+        try:
+            minimap_result = await db.execute(
+                select(RepoWikiMiniMap).where(RepoWikiMiniMap.document_id == document_id)
+            )
+            return minimap_result.scalar_one_or_none()
+        except Exception as e:
+            logging.error(f"获取迷你地图失败: {e}")
+            raise
+
+    @staticmethod
+    async def get_commit_records_by_document_id(db: AsyncSession, document_id: str) -> List[RepoWikiCommitRecord]:
+        """根据文档ID获取提交记录列表"""
+        try:
+            commits_result = await db.execute(
+                select(RepoWikiCommitRecord).where(RepoWikiCommitRecord.document_id == document_id)
+            )
+            return list(commits_result.scalars().all())
+        except Exception as e:
+            logging.error(f"获取提交记录失败: {e}")
+            raise

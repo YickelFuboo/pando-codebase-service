@@ -82,11 +82,11 @@ class CodeWikiGenService:
             classify = await self.generate_classify(repo_catalogue, readme)
             
             # 步骤4: 生成知识图谱
-            minimap_service = MiniMapService(self.session, self.document_id, self.local_path, self.git_url, self.branch, repo_catalogue)
-            minmap = await minimap_service.generate_mini_map()
+            #minimap_service = MiniMapService(self.session, self.document_id, self.local_path, self.git_url, self.branch, repo_catalogue)
+            #minmap = await minimap_service.generate_mini_map()
 
             # 步骤5: 生成项目概述
-            overview = await self.generate_overview(repo_catalogue, readme, classify)
+            #overview = await self.generate_overview(repo_catalogue, readme, classify)
             
             # 步骤6: 生成目录结构 和目录结构中的文档内容
             content_gen_service = CodeWikiContentGenService(

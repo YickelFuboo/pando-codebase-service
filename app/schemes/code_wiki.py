@@ -131,3 +131,48 @@ class UpdateRepoWikiContentRequest(BaseModel):
             raise ValueError("文档内容不能为空")
         return v.strip()
 
+
+class RepoWikiOverviewResponse(BaseModel):
+    """文档概述响应"""
+    id: str = Field(..., description="概述ID")
+    document_id: str = Field(..., description="文档ID")
+    title: str = Field(..., description="标题")
+    content: str = Field(..., description="内容")
+    created_at: Optional[datetime] = Field(None, description="创建时间")
+    updated_at: Optional[datetime] = Field(None, description="更新时间")
+
+    class Config:
+        from_attributes = True
+
+
+class UpdateRepoWikiOverviewRequest(BaseModel):
+    """更新概述请求"""
+    title: Optional[str] = Field(None, description="标题")
+    content: Optional[str] = Field(None, description="内容")
+
+
+class RepoWikiMiniMapResponse(BaseModel):
+    """迷你地图响应"""
+    id: str = Field(..., description="迷你地图ID")
+    document_id: str = Field(..., description="文档ID")
+    value: str = Field(..., description="思维导图数据")
+    created_at: Optional[datetime] = Field(None, description="创建时间")
+    updated_at: Optional[datetime] = Field(None, description="更新时间")
+
+    class Config:
+        from_attributes = True
+
+
+class RepoWikiCommitRecordResponse(BaseModel):
+    """提交记录响应"""
+    id: str = Field(..., description="记录ID")
+    document_id: str = Field(..., description="文档ID")
+    commit_id: str = Field(..., description="提交ID")
+    commit_message: str = Field(..., description="提交消息")
+    title: str = Field(..., description="标题")
+    author: str = Field(..., description="作者")
+    created_at: Optional[datetime] = Field(None, description="创建时间")
+    updated_at: Optional[datetime] = Field(None, description="更新时间")
+
+    class Config:
+        from_attributes = True

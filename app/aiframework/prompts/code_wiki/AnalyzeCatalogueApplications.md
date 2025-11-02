@@ -140,3 +140,5 @@ Before finalizing your documentation structure:
 - [ ] Integration points between different application areas are documented
 - [ ] Troubleshooting and common issues are addressed in relevant sections
 
+请使用中文
+

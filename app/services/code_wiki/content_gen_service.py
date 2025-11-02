@@ -79,7 +79,7 @@ class CodeWikiContentGenService:
                 raise ValueError(f"获取提示词模板失败: {prompt_name}")
 
             # 获取系统提示词
-            system_prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", "SystemExtensionPrompt")
+            system_prompt = get_prompt_template("app/aiframework/prompts/code_wiki", "SystemExtensionPrompt")
 
             history = ChatHistory()
             history.add_system_message(system_prompt)
@@ -242,8 +242,8 @@ class CodeWikiContentGenService:
                 prompt_name += classify
             
             # 获取提示词模板
-            system_prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", "SystemExtensionPrompt")
-            prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", prompt_name, {
+            system_prompt = get_prompt_template("app/aiframework/prompts/code_wiki", "SystemExtensionPrompt")
+            prompt = get_prompt_template("app/aiframework/prompts/code_wiki", prompt_name, {
                 "catalogue": repo_catalogue,
                 "prompt": wiki_catalog.prompt,
                 "git_repository": (self.git_url or "").replace(".git", ""),
