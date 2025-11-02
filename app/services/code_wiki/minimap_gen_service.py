@@ -1,21 +1,19 @@
 import re
+import uuid
+import json
 import logging
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import delete, insert
 from dataclasses import dataclass, field
 from semantic_kernel.functions import KernelArguments
 from semantic_kernel.connectors.ai import PromptExecutionSettings, FunctionChoiceBehavior
-from app.services.ai_kernel.kernel_factory import KernelFactory
-from app.aiframework.agent_frame.semantic.sk_service import SemanticKernelService
 from semantic_kernel.contents.chat_history import ChatHistory
-from app.config.settings import settings
-from app.services.ai_kernel.functions.file_function import FileFunction
-from app.models.code_wiki import RepoWikiMiniMap
-from sqlalchemy import delete, insert
-import uuid
-import json
-from app.services.code_wiki.document_service import CodeWikiDocumentService
+from app.aiframework.agent_frame.semantic.kernel_factory import KernelFactory
 from app.aiframework.prompts.prompt_template_load import get_prompt_template
+from app.aiframework.agent_frame.semantic.functions.file_function import FileFunction
+from app.config.settings import settings
+from app.models.code_wiki import RepoWikiMiniMap
 
 
 @dataclass
@@ -25,51 +23,51 @@ class MiniMapResult:
     url: Optional[str] = None
     nodes: List['MiniMapResult'] = field(default_factory=list)
 
-
 class MiniMapService:
-    def __init__(self, session: AsyncSession, document_id: str, local_path: str, git_url: str, git_name: str, branch: str):
+    def __init__(self, session: AsyncSession, document_id: str, local_path: str, git_url: str, branch: str, repo_catalogue: str):
         self.session = session
         self.document_id = document_id
         self.local_path = local_path
         self.git_url = git_url
-        self.git_name = git_name
         self.branch = branch
+        self.repo_catalogue = repo_catalogue
 
     """迷你地图服务"""
-    async def generate_mini_map(self, repo_catalogue: str) -> MiniMapResult:
+    async def generate_mini_map(self) -> MiniMapResult:
         """生成知识图谱"""
 
         try:
-            document = await CodeWikiDocumentService.get_wiki_document_by_id(self.session, self.document_id)
-            if not document:
-                raise ValueError(f"文档ID {self.document_id} 不存在")
+            #document = await CodeWikiDocumentService.get_wiki_document_by_id(self.session, self.document_id)
+            #if not document:
+            #    raise ValueError(f"文档ID {self.document_id} 不存在")
 
             # 启动AI智能过滤
-            kernel_factory = KernelFactory()
-            kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=True)
+            kernel = await KernelFactory.get_kernel()
+            kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
-            system_prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", "SystemExtensionPrompt")
-            prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", "GenerateMindMap")
+            system_prompt = get_prompt_template("app/aiframework/prompts/code_wiki", "SystemExtensionPrompt")
+            prompt = get_prompt_template("app/aiframework/prompts/code_wiki", "GenerateMindMap", {
+                    "code_files": self.repo_catalogue,
+                    "repository_url": self.git_url.replace(".git", ""),
+                    "branch_name": self.branch,
+                },
+            )
 
             history = ChatHistory()
             history.add_system_message(system_prompt)
             history.add_user_message(prompt)
 
+            # 将历史消息转换为字符串
+            history_str = "\n".join(f"{msg.role}: {msg.content}" for msg in history.messages)
+
             # 流式调用，聚合文本
             response = await kernel.invoke_prompt(
-                prompt={{history}},
+                prompt=history_str,
                 arguments=KernelArguments(
                     settings=PromptExecutionSettings(
                         function_choice_behavior=FunctionChoiceBehavior.Auto()
-                    ),
-                    max_tokens=settings.llm.get_default_model().max_context_tokens,
-                    history=history,
-                ),
-                kwargs={
-                    "code_files": repo_catalogue,
-                    "repository_url": self.git_url.replace(".git", ""),
-                    "branch_name": self.branch,
-                },
+                    )
+                )
             )
             result_str = str(response)
 
@@ -98,7 +96,6 @@ class MiniMapService:
             await self.session.commit()
 
             return result
-
         except Exception as e:
             logging.error(f"生成迷你地图失败: {e}")
             return MiniMapResult()

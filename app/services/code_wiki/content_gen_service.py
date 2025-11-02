@@ -10,18 +10,17 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update, delete, insert
+from sqlalchemy.orm.session import Session
 from semantic_kernel.functions import KernelArguments
 from semantic_kernel.connectors.ai import PromptExecutionSettings, FunctionChoiceBehavior
-from sqlalchemy.orm.session import Session
-from app.aiframework.prompts.prompt_template_load import get_prompt_template
-from app.models.code_wiki import ClassifyType, RepoWikiCatalog, RepoWikiContent
-from app.services.ai_kernel.kernel_factory import KernelFactory
 from semantic_kernel.contents.chat_history import ChatHistory
+from app.aiframework.agent_frame.semantic.kernel_factory import KernelFactory
+from app.aiframework.prompts.prompt_template_load import get_prompt_template
+from app.aiframework.agent_frame.semantic.functions.file_function import FileFunction
+from app.models.code_wiki import ClassifyType, RepoWikiCatalog, RepoWikiContent
 from app.config.settings import settings
-from app.services.ai_kernel.functions.file_function import FileFunction
-from app.services.common.local_repo_service import LocalRepoService
 from app.services.code_wiki.document_service import CodeWikiDocumentService
-from app.services.git_repo_service import GitRepositoryService
+
 
 @dataclass
 class DocumentResultCatalogueItem:
@@ -37,19 +36,28 @@ class DocumentResultCatalogueItem:
 
 class CodeWikiContentGenService:
     """Code Wiki服务类 - 提供代码Wiki的创建、更新和查询功能"""
-    def __init__(self, session: AsyncSession, document_id: str, local_path: str, git_url: str, git_name: str, branch: str):
+    def __init__(self, session: AsyncSession, document_id: str, local_path: str, git_url: str, git_name: str, branch: str, repo_catalogue: str, classify: Optional[ClassifyType] = None):
         self.session = session
         self.document_id = document_id
         self.local_path = local_path    
         self.git_url = git_url
         self.git_name = git_name
         self.branch = branch
+        self.repo_catalogue = repo_catalogue
+        self.classify = classify
+
+    async def generate_wiki_catalogue_and_content(self):
+        """生成目录和内容"""
+        try:
+            # 生成目录
+            wiki_catalogs = await self.generate_wiki_catalogue()
+            # 生成内容
+            await self.generate_wiki_content(wiki_catalogs)
+        except Exception as e:
+            logging.error(f"生成目录和内容失败: {e}")
+            raise
     
-    async def generate_wiki_catalogue(
-        self, 
-        catalogue: str,
-        classify: Optional[ClassifyType] = None
-    ) -> List[RepoWikiCatalog]:
+    async def generate_wiki_catalogue(self) -> List[RepoWikiCatalog]:
         """生成目录"""
         try:
             doucument = await CodeWikiDocumentService.get_wiki_document_by_id(self.session, self.document_id)
@@ -58,12 +66,11 @@ class CodeWikiContentGenService:
 
             # 构建提示词名称
             prompt_name = "AnalyzeCatalogue"
-            if classify:
-                prompt_name += classify.value
+            if self.classify:
+                prompt_name += self.classify
 
-            prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", prompt_name, {
-                "code_files": catalogue,
-                "git_repository_url": self.git_url.replace(".git", ""),
+            prompt = get_prompt_template("app/aiframework/prompts/code_wiki", prompt_name, {
+                "code_files": self.repo_catalogue,
                 "repository_name": self.git_name
             })
 
@@ -80,26 +87,19 @@ class CodeWikiContentGenService:
             history.add_assistant_message("Ok. Now I will start analyzing the core file. And I won't ask you questions or notify you. I will directly provide you with the required content. Please confirm")
             history.add_user_message("OK, I confirm that you can start analyzing the core file now. Please proceed with the analysis and provide the relevant content as required. There is no need to ask questions or notify me. The generated document structure will be refined and a complete and detailed directory structure of document types will be provided through project file reading and analysis.")
 
-            kernel_factory = KernelFactory()
-            kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=False)
+            kernel = await KernelFactory.get_kernel()
+            kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
             
-            # 创建分析模型内核
-            kernel = KernelFactory.get_kernel(self.local_path, is_code_analysis=False)
+            # 将历史消息转换为字符串
+            history_str = "\n".join(f"{msg.role}: {msg.content}" for msg in history.messages)
             response = await kernel.invoke_prompt(
-                prompt={{history}},
+                prompt=history_str,
                 arguments=KernelArguments(
                     settings=PromptExecutionSettings(
                         function_choice_behavior=FunctionChoiceBehavior.Auto()
                     ),
-                    Temperature=0.5,
-                    max_tokens=settings.llm.get_default_model().max_context_tokens,
-                    history=history,
-                ),
-                kwargs={
-                    "code_files": catalogue,
-                    "git_repository_url": self.git_url.replace(".git", ""),
-                    "repository_name": self.git_name,
-                },
+                    Temperature=0.5
+                )
             )
             result_str = str(response)
 
@@ -107,21 +107,16 @@ class CodeWikiContentGenService:
                 history.add_assistant_message(result_str)
                 history.add_user_message("The directory you have provided now is not detailed enough, and the project code files have not been carefully analyzed.  Generate a complete project document directory structure and conduct a detailed analysis Organize hierarchically with clear explanations for each component's role and functionality. Please do your best and spare no effort.")
 
+                # 将历史消息转换为字符串
+                history_str = "\n".join(f"{msg.role}: {msg.content}" for msg in history.messages)
                 response = await kernel.invoke_prompt(
-                    prompt={{history}},
+                    prompt=history_str,
                     arguments=KernelArguments(
                         settings=PromptExecutionSettings(
                             function_choice_behavior=FunctionChoiceBehavior.Auto()
                         ),
-                        Temperature=0.5,
-                        max_tokens=settings.llm.get_default_model().max_context_tokens,
-                        history=history,
-                    ),
-                    kwargs={
-                        "code_files": catalogue,
-                        "git_repository_url": self.git_url.replace(".git", ""),
-                        "repository_name": self.git_name,
-                    },
+                        Temperature=0.5
+                    )
                 )
                 result_str = str(response)
                     
@@ -149,7 +144,6 @@ class CodeWikiContentGenService:
             await self.session.commit()
 
             return wiki_catalogs
-
         except Exception as e:
             logging.warning(f"处理仓库 {self.local_path}, 处理标题 {self.git_name} 失败: {e}")
             return None
@@ -248,37 +242,35 @@ class CodeWikiContentGenService:
                 prompt_name += classify
             
             # 获取提示词模板
-            prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", prompt_name)
             system_prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", "SystemExtensionPrompt")
+            prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", prompt_name, {
+                "catalogue": repo_catalogue,
+                "prompt": wiki_catalog.prompt,
+                "git_repository": (self.git_url or "").replace(".git", ""),
+                "branch": self.branch,
+                "title": wiki_catalog.name
+                }
+            )
 
             history = ChatHistory()
             history.add_system_message(system_prompt)
             history.add_user_message(prompt)
 
-            kernel_factory = KernelFactory()
-            kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=False)
+            kernel = await KernelFactory.get_kernel()
+            kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
-            # 非流式调用
+            # 将历史消息转换为字符串
+            history_str = "\n".join(f"{msg.role}: {msg.content}" for msg in history.messages)
             result = await kernel.invoke_prompt(
-                prompt="{{history}}",
+                prompt=history_str,
                 arguments=KernelArguments(
                     settings=PromptExecutionSettings(
                         function_choice_behavior=FunctionChoiceBehavior.Auto()
                     ),
-                    Temperature=0.5,
-                    max_tokens=settings.llm.get_default_model().max_context_tokens,
-                    history=history,
-                ),
-                kwargs={
-                    "catalogue": repo_catalogue,
-                    "prompt": wiki_catalog.prompt,
-                    "git_repository": (self.git_url or "").replace(".git", ""),
-                    "branch": self.branch,
-                    "title": wiki_catalog.name
-                },
+                    Temperature=0.5
+                )
             )
             result_str = str(result) if result else ""
-
 
             if settings.refine_and_enhance_quality:
                 history.add_assistant_message(result_str)
@@ -292,24 +284,16 @@ class CodeWikiContentGenService:
                     Please do your best and spare no effort.
                     """)
 
-                # 流式调用，聚合文本
+                # 将历史消息转换为字符串
+                history_str = "\n".join(f"{msg.role}: {msg.content}" for msg in history.messages)
                 result = await kernel.invoke_prompt(
-                    prompt="{{history}}",
+                    prompt=history_str,
                     arguments=KernelArguments(
                         settings=PromptExecutionSettings(
                             function_choice_behavior=FunctionChoiceBehavior.Auto()
                         ),
-                        Temperature=0.5,
-                        max_tokens=settings.llm.get_default_model().max_context_tokens,
-                        history=history,
-                    ),
-                    kwargs={
-                        "catalogue": repo_catalogue,
-                        "prompt": wiki_catalog.prompt,
-                        "git_repository": (self.git_url or "").replace(".git", ""),
-                        "branch": self.branch,
-                        "title": wiki_catalog.name
-                    },
+                        Temperature=0.5
+                    )
                 )
                 result_str = str(result) if result else ""
             

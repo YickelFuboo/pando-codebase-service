@@ -3,9 +3,10 @@ from enum import Enum
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, Index, Enum
 from sqlalchemy.orm import relationship
+from app.models.base import Base
 
 
-class GitAuthority():
+class GitAuthority(Base):
     """用户Git认证信息模型"""
     __tablename__ = "git_authorities"
     

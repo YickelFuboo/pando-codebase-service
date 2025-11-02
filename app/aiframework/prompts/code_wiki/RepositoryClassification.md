@@ -6,11 +6,11 @@ Analyze the provided repository information and classify it into exactly one pre
 
 # INPUT PARAMETERS
 <category>
-{{$category}}
+{{category}}
 </category>
 
 <readme>
-{{$readme}}
+{{readme}}
 </readme>
 
 # CLASSIFICATION FRAMEWORK

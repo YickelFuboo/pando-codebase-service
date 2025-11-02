@@ -215,11 +215,16 @@ class GitRepositoryService:
         user_id: str, 
         name: str, 
         description: str, 
-        local_repo_path: str) -> GitRepository:
+        local_repo_path: str,
+        git_url: str) -> GitRepository:
         """通过指定路径创建仓库"""
         try:
             # 验证服务端路径
             GitRepositoryService._validate_repo_path(local_repo_path)
+            
+            # 验证git_url
+            if not git_url or not git_url.strip():
+                raise ValueError("Git URL地址不能为空")
             
             # 检查仓库是否已存在
             existing_repo = await session.execute(
@@ -231,13 +236,19 @@ class GitRepositoryService:
             if existing_repo.scalar_one_or_none():
                 raise ValueError("仓库已存在")
             
+            # 解析git URL获取provider和organization
+            git_provider = RemoteGitService.get_git_provider(git_url.strip())
+            if git_provider is None:
+                git_provider = "local"
+            organization, _ = RemoteGitService.get_git_url_info(git_url.strip())
+            
             # 创建仓库记录
             repository = GitRepository(
                 id=str(uuid.uuid4()),
                 user_id=user_id,
-                git_provider="local",  # 路径方式
-                repository_url="",  # 路径方式没有URL
-                organization="local",  # 路径方式没有组织
+                git_provider=git_provider,
+                repository_url=git_url.strip(),
+                organization=organization,
                 repository_name=name,
                 description=description,
                 branch="main",  # 路径方式默认分支

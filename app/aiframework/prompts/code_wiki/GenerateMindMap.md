@@ -14,10 +14,10 @@ Analyze the provided code repository and generate a comprehensive knowledge grap
    </task>
 
 <input_context>
-Branch Name: {{$branch_name}}
-Repository URL: {{$repository_url}}
+Branch Name: {{branch_name}}
+Repository URL: {{repository_url}}
 Code Files: 
-{{$code_files}}
+{{code_files}}
 </input_context>
 
 ## Core Requirements

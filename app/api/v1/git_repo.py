@@ -5,7 +5,7 @@ from app.infrastructure.database import get_db
 from app.schemes.git_repo import CreateRepositoryFromUrl, UpdateRepository, RepositoryInfo
 from app.services.git_repo_service import GitRepositoryService
 
-router = APIRouter(prefix="/git-repos", tags=["Git仓库管理"])
+router = APIRouter(prefix="/git-repos", tags=["仓库管理"])
 
 
 @router.post("/create/url", response_model=RepositoryInfo)
@@ -60,6 +60,7 @@ async def create_repository_from_path(
     name: str = Form(..., description="仓库名称"),
     description: str = Form("", description="仓库描述"),
     folder_path: str = Form(..., description="服务端路径"),
+    git_url: str = Form(..., description="Git URL地址"),
     user_id: str = Form(..., description="用户ID"),
     db: AsyncSession = Depends(get_db)
 ):
@@ -67,7 +68,7 @@ async def create_repository_from_path(
     try:
         # 处理路径创建
         repository = await GitRepositoryService.create_repository_from_path(
-            db, user_id, name, description, folder_path
+            db, user_id, name, description, folder_path, git_url
         )
         return repository
         

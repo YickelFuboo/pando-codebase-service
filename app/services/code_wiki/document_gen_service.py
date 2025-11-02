@@ -11,15 +11,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import update, delete, insert
 from semantic_kernel.functions import KernelArguments
 from semantic_kernel.connectors.ai import PromptExecutionSettings, FunctionChoiceBehavior
-from semantic_kernel.contents.chat_history import ChatHistory
-from app.models.code_wiki import ClassifyType, RepoWikiDocument, RepoWikiOverview, RepoWikiCommitRecord, ProcessingStatus
+from app.config.settings import settings
+from app.models.code_wiki import ProcessingStatus, ClassifyType, RepoWikiOverview, RepoWikiCommitRecord
 from app.aiframework.prompts.prompt_template_load import get_prompt_template
 from app.aiframework.agent_frame.semantic.kernel_factory import KernelFactory
-from app.config.settings import settings
-from app.services.ai_kernel.functions.file_function import FileFunction
+from app.aiframework.agent_frame.semantic.functions.file_function import FileFunction
 from app.services.common.local_repo_service import LocalRepoService
 from app.services.code_wiki.document_service import CodeWikiDocumentService
 from app.services.code_wiki.content_gen_service import CodeWikiContentGenService
+from app.services.code_wiki.minimap_gen_service import MiniMapService
 
 
 @dataclass
@@ -28,6 +28,7 @@ class CommitResultDto:
     title: str
     description: str
 
+    @staticmethod
     def from_json(json_str: str) -> 'CommitResultDto':
         data = json.loads(json_str)
         return CommitResultDto(
@@ -35,6 +36,19 @@ class CommitResultDto:
             title=data['title'],
             description=data['description']
         )
+    
+    @staticmethod
+    def from_dict(data: dict) -> 'CommitResultDto':
+        return CommitResultDto(
+            date=datetime.fromisoformat(data['date']),
+            title=data['title'],
+            description=data['description']
+        )
+    
+    @staticmethod
+    def from_json_list(json_str: str) -> list['CommitResultDto']:
+        data_list = json.loads(json_str)
+        return [CommitResultDto.from_dict(item) for item in data_list]
 
 class CodeWikiGenService:
     """Code Wiki服务类 - 提供代码Wiki的创建、更新和查询功能"""
@@ -49,11 +63,6 @@ class CodeWikiGenService:
     async def generate_wiki(self):
         """生成文档"""
         try:
-            # 检查文档是否存在
-            document = await CodeWikiDocumentService.get_wiki_document_by_id(self.session, self.document_id)
-            if not document:
-                raise ValueError(f"文档ID {self.document_id} 不存在")
-
             # 更新状态为处理中
             await CodeWikiDocumentService.update_processing_status(
                 self.session, 
@@ -73,19 +82,26 @@ class CodeWikiGenService:
             classify = await self.generate_classify(repo_catalogue, readme)
             
             # 步骤4: 生成知识图谱
-            minmap = await self.generate_mini_map(repo_catalogue)
+            minimap_service = MiniMapService(self.session, self.document_id, self.local_path, self.git_url, self.branch, repo_catalogue)
+            minmap = await minimap_service.generate_mini_map()
 
             # 步骤5: 生成项目概述
             overview = await self.generate_overview(repo_catalogue, readme, classify)
             
-            # 步骤6: 生成目录结构
-            content_gen_service = CodeWikiContentGenService(self.session, self.document_id, self.local_path, self.git_url, self.git_name, self.branch)
-            wiki_catalogs = await content_gen_service.generate_wiki_catalogue(repo_catalogue, classify)
+            # 步骤6: 生成目录结构 和目录结构中的文档内容
+            content_gen_service = CodeWikiContentGenService(
+                self.session, 
+                self.document_id, 
+                self.local_path, 
+                self.git_url, 
+                self.git_name, 
+                self.branch,
+                repo_catalogue,
+                classify
+            )
+            await content_gen_service.generate_wiki_catalogue_and_content()
             
-            # 步骤7: 生成目录结构中的文档内容
-            await content_gen_service.generate_wiki_content(wiki_catalogs, repo_catalogue, classify)
-            
-            # 步骤8: 生成更新日志 (仅Git仓库)
+            # 步骤7: 生成更新日志 (仅Git仓库)
             if self.git_url:
                 await self.generate_update_log(readme)
             
@@ -146,11 +162,10 @@ class CodeWikiGenService:
                 kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
                 # 2.3 调用生成 README 的语义插件
-                readme = None
                 if kernel is not None:
                     prompt = get_prompt_template(
-                        "app/services/ai_kernel/plugins/code_analysis/GenerateReadme", 
-                        "generatereadme",
+                        "app/aiframework/prompts/code_wiki", 
+                        "GenerateReadme",
                         {
                             "catalogue": catalogue,
                             "git_repository": self.git_url,
@@ -166,92 +181,81 @@ class CodeWikiGenService:
                             )
                         )
                     )
-                    readme = str(result) if result else None
+                    generated = str(result) if result else None
+
+                    if generated:
+                        match = re.search(r"<readme>(.*?)</readme>", generated, re.DOTALL | re.IGNORECASE)
+                        readme = match.group(1) if match else generated
                 else:
                     logging.error(f"创建AI内核失败，将回退到基础README。错误: {e}")
                     raise
 
             # 更新README内容
-            #await CodeWikiDocumentService.update_wiki_document_fields(
-            #    self.session, 
-            #    self.document_id, 
-            #    readme_content=readme
-            #)
+            await CodeWikiDocumentService.update_wiki_document_fields(
+                self.session, 
+                self.document_id, 
+                readme_content=readme
+            )
 
             return readme
         except Exception as e:
             logging.error(f"生成README失败: {e}")
             return ""
     
-    async def generate_repo_catalogue(self, path: str, readme: str) -> str:
+    async def generate_repo_catalogue(self, readme: str) -> str:
         """步骤2: 生成目录结构
         - 扫描目录统计条目数；小于阈值或未启用智能过滤时，直接构建优化目录结构
         - 否则启用 AI 智能过滤：使用 CodeAnalysis/CodeDirSimplifier 插件，支持重试与解析结果
         - 成功后写入 warehouse.optimized_directory_structure
         """
         try:
-            # 获取配置参数
-            enable_smart_filter = settings.code_wiki_gen.enable_smart_filter
-            catalogue_format = settings.code_wiki_gen.catalogue_format
-
             # 获取目录文件列表
-            path_infos = await LocalRepoService.get_folders_and_files(path)
+            path_infos = await LocalRepoService.get_folders_and_files(self.local_path)
             total_items = len(path_infos)
-            catalogue = await LocalRepoService.get_catalogue_optimized(path, catalogue_format)
+            catalogue = await LocalRepoService.get_catalogue_optimized(self.local_path, settings.catalogue_format)
 
-            if total_items > 800 and enable_smart_filter:
+            if total_items > 800 and settings.enable_smart_filter:
                 # 启动AI智能过滤
-                kernel_factory = KernelFactory()
-                kernel = await kernel_factory.get_kernel(git_local_path=path, is_code_analysis=True)
+                kernel = await KernelFactory.get_kernel()
+                kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
                 if kernel is not None:
                     result_text = ""
-                    max_retries = 5
-                    last_exception = None
+                    prompt = get_prompt_template(
+                        "app/aiframework/prompts/code_wiki", 
+                        "CodeDirSimplifier",
+                        {
+                            "readme": readme or "",
+                            "code_files": catalogue
+                        }
+                    )
 
-                    for retry_idx in range(max_retries):
-                        try:
-                            simplify_fn = kernel.get_plugin("CodeAnalysis").get_function("CodeDirSimplifier")
-                            if simplify_fn is not None:
-                                result = await kernel.invoke(
-                                    function=simplify_fn,
-                                    arguments=KernelArguments(
-                                        settings=PromptExecutionSettings(
-                                            function_choice_behavior=FunctionChoiceBehavior.Auto()
-                                        )
-                                    ),
-                                    kwargs={
-                                        "code_files": catalogue,
-                                        "readme": readme or ""
-                                    }
-                                )
-                                result_text = str(result) if result else ""
-                                last_exception = None
-                                break
-                            else:
-                                logging.warning("未发现语义插件 CodeAnalysis/CodeDirSimplifier，回退为直接构建目录结构。")
-                                break
-                        except Exception as ex:
-                            last_exception = ex
-                            logging.error(f"优化目录结构失败，重试第{retry_idx + 1}次：{ex}")
-                            await asyncio.sleep(5 * (retry_idx + 1))
+                    result = await kernel.invoke_prompt(
+                        prompt=prompt,
+                        arguments=KernelArguments(
+                            settings=PromptExecutionSettings(
+                                function_choice_behavior=FunctionChoiceBehavior.Auto()
+                            )
+                        )
+                    )
+                    result_text = str(result) if result else None
+                else:
+                    logging.error(f"创建AI内核失败，将回退到基础目录结构。错误: {e}")
+                    raise
 
-                    if last_exception is not None:
-                        logging.error(f"优化目录结构失败，已重试{max_retries}次：{last_exception}")
-
-                    # 3.2 解析 AI 输出，或在失败时回退
-                    if result_text:
-                        # 解析 <response_file>...</response_file>
-                        match = re.search(r"<response_file>(.*?)</response_file>", result_text, re.DOTALL | re.IGNORECASE)
-                        if match:
-                            catalogue = match.group(1)
+                # 3.2 解析 AI 输出，或在失败时回退
+                if result_text:
+                    # 解析 <response_file>...</response_file>
+                    match = re.search(r"<response_file>(.*?)</response_file>", result_text, re.DOTALL | re.IGNORECASE)
+                    if match:
+                        catalogue = match.group(1)
+                    else:
+                        # 解析 ```json ... ```
+                        json_match = re.search(r"```json(.*?)```", result_text, re.DOTALL | re.IGNORECASE)
+                        if json_match:
+                            catalogue = json_match.group(1).strip()
                         else:
-                            # 解析 ```json ... ```
-                            json_match = re.search(r"```json(.*?)```", result_text, re.DOTALL | re.IGNORECASE)
-                            if json_match:
-                                catalogue = json_match.group(1).strip()
-                            else:
-                                catalogue = result_text
+                            catalogue = result_text
 
             # 4) 写入数据库
             if catalogue:
@@ -277,11 +281,11 @@ class CodeWikiGenService:
             classify = document.classify
             if not classify:
                 # 启动AI智能过滤
-                kernel_factory = KernelFactory()
-                kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=False)
+                kernel = await KernelFactory.get_kernel()
+                kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
-                prompt = await get_prompt_template("app/services/ai_kernel/prompts/Warehouse", "RepositoryClassification", {
-                    "catalogue": catalogue,
+                prompt = get_prompt_template("app/aiframework/prompts/code_wiki", "RepositoryClassification", {
+                    "category": catalogue,
                     "readme": readme
                 })
 
@@ -290,12 +294,7 @@ class CodeWikiGenService:
                     prompt=prompt,
                     arguments=KernelArguments(                    
                         temperature=0.1,
-                        max_tokens=settings.llm.get_default_model().max_context_tokens,
-                    ),
-                    kwargs={
-                        "code_files": catalogue,
-                        "readme": readme or ""
-                    }
+                    )
                 )
                 
                 result_text = str(result) if result else ""
@@ -335,27 +334,27 @@ class CodeWikiGenService:
             # 构建提示词名称
             prompt_name = "Overview"
             if classify:
-                prompt_name += classify.value
+                prompt_name += classify
             
             # 获取提示词模板
-            prompt_template = get_prompt_template("app\services\ai_kernel\prompts\Warehouse", prompt_name, {
+            prompt = get_prompt_template("app/aiframework/prompts/code_wiki", prompt_name, {
                     "catalogue": catalog,
                     "git_repository": self.git_url.replace(".git", ""),
                     "branch": self.branch,
                     "readme": readme
                 }
             )
-            if not prompt_template:
+            if not prompt:
                 logging.error(f"获取提示词模板失败: {prompt_name}")
                 raise ValueError(f"获取提示词模板失败: {prompt_name}")
 
             # 启动AI智能过滤
-            kernel_factory = KernelFactory()
-            kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=True)
+            kernel = await KernelFactory.get_kernel()
+            kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
 
             # 调用AI生成项目概述
             respone = await kernel.invoke_prompt(
-                prompt=prompt_template,
+                prompt=prompt,
                 arguments=KernelArguments(
                     settings=PromptExecutionSettings(
                         function_choice_behavior=FunctionChoiceBehavior.Auto()
@@ -381,7 +380,7 @@ class CodeWikiGenService:
 
             # 新增 或 更新overview表内容
             await self.session.execute(
-                delete(RepoWikiOverview)
+               delete(RepoWikiOverview)
                 .where(RepoWikiOverview.document_id == self.document_id)
             )
             await self.session.commit()
@@ -413,55 +412,60 @@ class CodeWikiGenService:
 
             # 读取git log
             repo = Repo(self.local_path)
-            logs = repo.commits.order_by(lambda x: x.committer.when).take(20).order_by(lambda x: x.committer.when).to_list()
+            commits = list(repo.iter_commits(max_count=20))
+            logs = sorted(commits, key=lambda x: x.committed_datetime, reverse=True)
 
             commit_message = ""
             for commit in logs:
                 commit_message += "提交人：" + commit.committer.name + "\n提交内容\n<message>\n" + commit.message + "<message>"
-                commit_message += "\n提交时间：" + commit.committer.when.strftime("%Y-%m-%d %H:%M:%S") + "\n"
+                commit_message += "\n提交时间：" + commit.committed_datetime.strftime("%Y-%m-%d %H:%M:%S") + "\n"
 
-            kernel_factory = KernelFactory()
-            kernel = await kernel_factory.get_kernel(git_local_path=self.local_path, is_code_analysis=True)
+            kernel = await KernelFactory.get_kernel()
+            kernel.add_plugin(FileFunction(self.local_path), "FileFunction")
+
             # 2.3 调用生成 README 的语义插件
             log_result = None
             if kernel is not None:
-                try:
-                    generate_fn = kernel.get_plugin("CodeAnalysis").get_function("CommitAnalyze")
-                    if generate_fn is not None:
-                        result = await kernel.invoke(
-                            function=generate_fn,
-                            kwargs={
-                                "readme": readme,
-                                "git_repository": self.git_url,
-                                "commit_message": commit_message,
-                                "branch": self.branch
-                            }
+                prompt = get_prompt_template("app/aiframework/prompts/code_wiki", "CommitAnalyze", {
+                    "readme": readme,
+                    "git_repository": self.git_url,
+                    "commit_message": commit_message,
+                    "branch": self.branch
+                })
+
+                result = await kernel.invoke_prompt(
+                    prompt=prompt,
+                    arguments=KernelArguments(
+                        settings=PromptExecutionSettings(
+                            function_choice_behavior=FunctionChoiceBehavior.Auto()
                         )
-                        log_result = str(result) if result else None
-                    else:
-                        logging.warning("未发现语义插件 CodeAnalysis/CommitAnalyze，跳过AI生成。")
-                        log_result = None
-                except Exception as e:
-                    logging.error(f"调用CommitAnalyze插件失败，将回退到基础README。错误: {e}")
+                    )
+                )
+                log_result = str(result) if result else None
+            else:
+                logging.error(f"创建AI内核失败，将回退到基础更新日志。错误: {e}")
+                raise
 
             if log_result:
                 match = re.search(r"<changelog>(.*?)</changelog>", log_result, re.DOTALL | re.IGNORECASE)
                 if match:
                     log_result = match.group(1)
 
-            commit_result = CommitResultDto.from_json(log_result)
+            commit_results = CommitResultDto.from_json_list(log_result)
 
-            record = []
-            for item in commit_result:
-                record.append(RepoWikiCommitRecord(
-                    document_id=self.document_id,
-                    author="",
-                    id=str(uuid.uuid4()),
-                    commit_message=item.description,
-                    title=item.title,                    
-                    created_at=datetime.now()
-                ))
-            await self.session.execute(insert(RepoWikiCommitRecord).values(record))
+            records = []
+            for item in commit_results:
+                records.append({
+                    "id": str(uuid.uuid4()),
+                    "document_id": self.document_id,
+                    "commit_id": "",
+                    "commit_message": item.description,
+                    "title": item.title,
+                    "author": "",
+                    "created_at": datetime.now(),
+                    "updated_at": datetime.now()
+                })
+            await self.session.execute(insert(RepoWikiCommitRecord).values(records))
             await self.session.commit()
             
         except Exception as e:

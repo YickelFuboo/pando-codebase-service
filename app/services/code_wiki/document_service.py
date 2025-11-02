@@ -8,6 +8,7 @@ from app.models.code_wiki import RepoWikiDocument, ClassifyType, ProcessingStatu
 from app.models.git_repo import GitRepository
 from app.services.git_repo_service import GitRepositoryService
 
+
 class CodeWikiDocumentService:
     """RepoWikiDocument内部服务"""
 
@@ -31,32 +32,44 @@ class CodeWikiDocumentService:
             if not git_repository:
                 raise ValueError(f"仓库ID {git_repo_id} 不存在")
 
-            # 检查Document是否存在，存在则删除
+            # 检查Document是否存在
             existing_doc_result = await db.execute(
                 select(RepoWikiDocument).where(RepoWikiDocument.repo_id == git_repository.id)
             )
-            existing_doc = existing_doc_result.scalar_one_or_none()
-            if existing_doc:
-                await db.delete(existing_doc)
+            document = existing_doc_result.scalar_one_or_none()
+
+            if not document:
+                document_id = str(uuid.uuid4())   
+
+                document = RepoWikiDocument(
+                    id=document_id,
+                    repo_id=git_repository.id,
+                    classify=None,  # 后续通过AI分析生成
+                    readme_content=None,  # 后续通过AI分析生成
+                    optimized_directory_struct=None,  # 后续通过AI分析生成
+                    processing_status=ProcessingStatus.Pending,
+                    processing_progress=0,
+                    processing_message="等待处理"
+                )
+                
+                db.add(document)
                 await db.commit()
-            
-            doc_record = RepoWikiDocument(
-                id=str(uuid.uuid4()),
-                repo_id=git_repository.id,
-                classify=None,  # 后续通过AI分析生成
-                readme_content=None,  # 后续通过AI分析生成
-                optimized_directory_struct=None,  # 后续通过AI分析生成
-                processing_status=ProcessingStatus.Pending,
-                processing_progress=0,
-                processing_message="等待处理"
+                await db.refresh(document)
+       
+            # 启动Document分析任务
+            from app.services.code_wiki.document_gen_service import CodeWikiGenService
+            doc_gen_service = CodeWikiGenService(
+                db, 
+                document.id, 
+                git_repository.local_path, 
+                git_repository.repository_url, 
+                git_repository.repository_name, 
+                git_repository.branch
             )
+            await doc_gen_service.generate_wiki()
             
-            db.add(doc_record)
-            await db.commit()
-            await db.refresh(doc_record)
-            
-            logging.info(f"为仓库 {git_repo_id} 创建CodeWikiDocument记录成功: {doc_record.id}")
-            return doc_record
+            logging.info(f"为仓库 {git_repo_id} 创建CodeWikiDocument记录成功: {document.id}")
+            return document
             
         except ValueError:
             # 重新抛出业务异常

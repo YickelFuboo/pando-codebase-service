@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     
     # 数据库配置
     database_type: str = Field(default="postgresql", description="数据库类型: postgresql 或 mysql", env="DATABASE_TYPE")
-    db_name: str = Field(default="knowledge_service", description="数据库名称", env="DB_NAME")
+    db_name: str = Field(default="codebase_service", description="数据库名称", env="DB_NAME")
     db_pool_size: int = Field(default=10, description="连接池大小", env="DB_POOL_SIZE")
     db_max_overflow: int = Field(default=20, description="最大溢出连接数", env="DB_MAX_OVERFLOW")
     

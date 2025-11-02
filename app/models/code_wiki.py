@@ -191,7 +191,7 @@ class RepoWikiContentSource(Base, TimestampMixin):
     __tablename__ = "repo_wiki_content_sources"
 
     id = Column(String, primary_key=True, index=True, comment="ID")
-    content_id = Column(String(36), nullable=False, comment="内容ID")
+    content_id = Column(String(36), ForeignKey("repo_wiki_contents.id"), nullable=False, comment="内容ID")
 
     # 源代码仓文件信息
     source_path = Column(String(500), nullable=False, comment="源路径")
